@@ -1,0 +1,30 @@
+# Core Dependencies
+opencv-python==4.8.1.78
+numpy==1.24.3
+pillow==10.0.0
+
+# Face Recognition
+deepface==0.0.79
+tf-keras==2.15.0
+tensorflow==2.15.0
+
+# Alternative/Additional Face Recognition (optional - uncomment if needed)
+# insightface==0.7.3
+# onnxruntime==1.16.0
+
+# Database
+pymongo==4.5.0
+
+# Web Framework
+flask==3.0.0
+flask-cors==4.0.0
+flask-socketio==5.3.4
+python-socketio==5.9.0
+gunicorn==21.2.0
+
+# Fast Search
+faiss-cpu==1.7.4
+
+# Utilities
+python-dotenv==1.0.0
+requests==2.31.0

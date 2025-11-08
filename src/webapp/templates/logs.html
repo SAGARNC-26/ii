@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}Access Logs - Smart Vault CCTV{% endblock %}
+{% block page_title %}Access Logs{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <div class="row align-items-center">
+            <div class="col">
+                <h5 class="mb-0"><i class="fas fa-list"></i> Detection Logs</h5>
+            </div>
+            <div class="col-auto">
+                <select id="filter-status" class="form-select form-select-sm">
+                    <option value="">All Status</option>
+                    <option value="Authorized">Authorized</option>
+                    <option value="Unauthorized">Unauthorized</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Image</th>
+                    <th>Name</th>
+                    <th>Confidence</th>
+                    <th>Status</th>
+                    <th>Camera</th>
+                    <th>Timestamp</th>
+                </tr>
+            </thead>
+            <tbody id="logs-table">
+                <tr>
+                    <td colspan="6" class="text-center">
+                        <div class="spinner-border" role="status"></div>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function loadLogs(status = '') {
+        const url = status ? `/api/logs?limit=100&status=${status}` : '/api/logs?limit=100';
+        
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                const tbody = document.getElementById('logs-table');
+                tbody.innerHTML = '';
+                
+                if (data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No logs found</td></tr>';
+                    return;
+                }
+                
+                data.forEach(log => {
+                    const row = document.createElement('tr');
+                    const statusClass = log.status === 'Authorized' ? 'success' : 'danger';
+                    const timestamp = new Date(log.timestamp).toLocaleString();
+                    
+                    row.innerHTML = `
+                        <td><img src="/api/image/${log.image_id}" class="face-thumbnail"></td>
+                        <td>${log.name}</td>
+                        <td>${(log.confidence * 100).toFixed(1)}%</td>
+                        <td><span class="badge bg-${statusClass}">${log.status}</span></td>
+                        <td>${log.camera_id}</td>
+                        <td>${timestamp}</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            })
+            .catch(error => console.error('Error loading logs:', error));
+    }
+    
+    document.getElementById('filter-status').addEventListener('change', (e) => {
+        loadLogs(e.target.value);
+    });
+    
+    loadLogs();
+    setInterval(() => loadLogs(document.getElementById('filter-status').value), 10000);
+</script>
+{% endblock %}

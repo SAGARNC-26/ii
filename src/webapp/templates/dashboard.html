@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Smart Vault CCTV{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<!-- Statistics Cards -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="stat-card success">
+            <h6><i class="fas fa-users"></i> Authorized Faces</h6>
+            <h2 id="stat-authorized">{{ stats.authorized_count }}</h2>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card info">
+            <h6><i class="fas fa-check-circle"></i> Authorized Detections</h6>
+            <h2 id="stat-authorized-logs">{{ stats.authorized_logs }}</h2>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card danger">
+            <h6><i class="fas fa-exclamation-circle"></i> Unauthorized</h6>
+            <h2 id="stat-unauthorized-logs">{{ stats.unauthorized_logs }}</h2>
+        </div>
+    </div>
+</div>
+
+<!-- Live Feed Section -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-dark text-white">
+                <h5 class="mb-0"><i class="fas fa-video"></i> Live Camera Feed</h5>
+            </div>
+            <div class="card-body text-center bg-dark">
+                <div id="live-feed" style="min-height: 400px; background: #1a1a1a; border-radius: 5px; display: flex; align-items: center; justify-content: center; position: relative;">
+                    <img id="videoStream" style="max-width: 100%; max-height: 400px; display: none;" />
+                    <div id="noFeedMessage" class="text-white">
+                        <i class="fas fa-video-slash fa-3x mb-3"></i>
+                        <p>Live feed will appear here when main.py is running</p>
+                        <p class="text-muted small">WebSocket connection required</p>
+                    </div>
+                    <div id="feedStatus" style="position: absolute; top: 10px; right: 10px; display: none;">
+                        <span class="badge bg-success">
+                            <i class="fas fa-circle" style="animation: blink 1s infinite;"></i> LIVE
+                        </span>
+                    </div>
+                </div>
+                <style>
+                    @keyframes blink {
+                        0%, 50% { opacity: 1; }
+                        51%, 100% { opacity: 0.3; }
+                    }
+                </style>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-bell"></i> Recent Activity</h5>
+            </div>
+            <div class="card-body" style="max-height: 460px; overflow-y: auto;">
+                <div id="recent-activity">
+                    <p class="text-muted">Loading recent detections...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Update stats every 5 seconds
+    function updateStats() {
+        fetch('/api/stats')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('stat-authorized').textContent = data.authorized_count || 0;
+                document.getElementById('stat-authorized-logs').textContent = data.authorized_logs || 0;
+                document.getElementById('stat-unauthorized-logs').textContent = data.unauthorized_logs || 0;
+            })
+            .catch(error => console.error('Error updating stats:', error));
+    }
+    
+    // Load recent activity
+    function loadRecentActivity() {
+        fetch('/api/logs?limit=5')
+            .then(response => response.json())
+            .then(data => {
+                const container = document.getElementById('recent-activity');
+                container.innerHTML = '';
+                
+                if (data.length === 0) {
+                    container.innerHTML = '<p class="text-muted">No recent activity</p>';
+                    return;
+                }
+                
+                data.forEach(log => {
+                    const statusClass = log.status === 'Authorized' ? 'success' : 'danger';
+                    const icon = log.status === 'Authorized' ? 'check-circle' : 'times-circle';
+                    const time = new Date(log.timestamp).toLocaleTimeString();
+                    
+                    const item = document.createElement('div');
+                    item.className = 'border-bottom pb-2 mb-2';
+                    item.innerHTML = `
+                        <div class="d-flex align-items-center">
+                            <img src="/api/image/${log.image_id}" class="face-thumbnail me-2">
+                            <div class="flex-grow-1">
+                                <strong>${log.name}</strong>
+                                <span class="badge bg-${statusClass} ms-2">
+                                    <i class="fas fa-${icon}"></i> ${log.status}
+                                </span>
+                                <div class="text-muted small">${time} - ${log.camera_id}</div>
+                            </div>
+                        </div>
+                    `;
+                    container.appendChild(item);
+                });
+            })
+            .catch(error => console.error('Error loading activity:', error));
+    }
+    
+    // WebSocket: Listen for new detections
+    socket.on('new_detection', (data) => {
+        showNotification(
+            `<strong>Detection:</strong> ${data.name} (${data.status})`,
+            data.status === 'Authorized' ? 'success' : 'warning'
+        );
+        loadRecentActivity();
+        updateStats();
+    });
+    
+    // WebSocket: Request stats updates
+    socket.on('stats_update', (data) => {
+        document.getElementById('stat-authorized').textContent = data.authorized_count || 0;
+        document.getElementById('stat-authorized-logs').textContent = data.authorized_logs || 0;
+        document.getElementById('stat-unauthorized-logs').textContent = data.unauthorized_logs || 0;
+    });
+    
+    // WebSocket: Handle video frames
+    socket.on('video_frame', (data) => {
+        const videoStream = document.getElementById('videoStream');
+        const noFeedMessage = document.getElementById('noFeedMessage');
+        const feedStatus = document.getElementById('feedStatus');
+        
+        if (data.frame) {
+            // Display the frame
+            videoStream.src = 'data:image/jpeg;base64,' + data.frame;
+            videoStream.style.display = 'block';
+            noFeedMessage.style.display = 'none';
+            feedStatus.style.display = 'block';
+        }
+    });
+    
+    // Initial load
+    updateStats();
+    loadRecentActivity();
+    
+    // Periodic updates
+    setInterval(updateStats, 5000);
+    setInterval(loadRecentActivity, 10000);
+</script>
+{% endblock %}

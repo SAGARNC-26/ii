@@ -1,0 +1,99 @@
+version: '3.8'
+
+services:
+  # MongoDB Database
+  mongodb:
+    image: mongo:latest
+    container_name: smartvault-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+    environment:
+      - MONGO_INITDB_DATABASE=smart_vault_cctv
+    networks:
+      - smartvault-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Flask Web Dashboard
+  flask-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.flask
+    container_name: smartvault-flask
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./src:/app/src
+      - ./known_faces:/app/known_faces
+      - ./models:/app/models
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/
+      - FLASK_HOST=0.0.0.0
+      - FLASK_PORT=5000
+      - FLASK_DEBUG=false
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - smartvault-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Suricata IDS (Optional - requires host network mode)
+  suricata:
+    image: jasonish/suricata:latest
+    container_name: smartvault-suricata
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - ./suricata/rules:/etc/suricata/rules
+      - ./suricata/logs:/var/log/suricata
+      - ./suricata/config:/etc/suricata
+    command: -i eth0 -v
+    profiles:
+      - security  # Only start when explicitly requested
+
+  # Alert Forwarder (Optional)
+  alert-forwarder:
+    build:
+      context: .
+      dockerfile: Dockerfile.forwarder
+    container_name: smartvault-forwarder
+    restart: unless-stopped
+    volumes:
+      - ./suricata/logs:/var/log/suricata:ro
+      - ./scripts:/app/scripts
+    environment:
+      - ALERT_ENDPOINT=http://flask-dashboard:5000/api/alert
+      - SURICATA_ALERT_LOG=/var/log/suricata/fast.log
+    depends_on:
+      - flask-dashboard
+      - suricata
+    networks:
+      - smartvault-network
+    profiles:
+      - security
+
+volumes:
+  mongodb_data:
+    driver: local
+  mongodb_config:
+    driver: local
+
+networks:
+  smartvault-network:
+    driver: bridge

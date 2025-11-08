@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block title %}Authorized Persons - Smart Vault CCTV{% endblock %}
+{% block page_title %}Authorized Persons{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header bg-success text-white">
+        <h5 class="mb-0"><i class="fas fa-users"></i> All Authorized Persons</h5>
+    </div>
+    <div class="card-body">
+        <div class="mb-3">
+            <input type="text" id="searchInput" class="form-control" placeholder="🔍 Search by name, role, or notes...">
+        </div>
+        <div id="authorized-grid" class="row">
+            <div class="col-12 text-center">
+                <div class="spinner-border" role="status"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- View Details Modal -->
+<div class="modal fade" id="detailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title"><i class="fas fa-user"></i> Person Details</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-4 text-center">
+                        <img id="detail-image" src="" class="img-fluid rounded" style="max-height: 300px;">
+                    </div>
+                    <div class="col-md-8">
+                        <table class="table table-bordered">
+                            <tr>
+                                <th width="30%">Name</th>
+                                <td id="detail-name"></td>
+                            </tr>
+                            <tr>
+                                <th>Role</th>
+                                <td id="detail-role"></td>
+                            </tr>
+                            <tr>
+                                <th>Notes</th>
+                                <td id="detail-notes"></td>
+                            </tr>
+                            <tr>
+                                <th>Enrolled Date</th>
+                                <td id="detail-date"></td>
+                            </tr>
+                            <tr>
+                                <th>Embedding Size</th>
+                                <td id="detail-embedding"></td>
+                            </tr>
+                            <tr>
+                                <th>Total Detections</th>
+                                <td id="detail-detections"></td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let allPersons = [];
+    
+    function loadAuthorizedPersons() {
+        fetch('/api/authorized_persons')
+            .then(response => response.json())
+            .then(data => {
+                allPersons = data;
+                displayPersons(allPersons);
+            })
+            .catch(error => console.error('Error loading authorized persons:', error));
+    }
+    
+    function displayPersons(persons) {
+        const grid = document.getElementById('authorized-grid');
+        grid.innerHTML = '';
+        
+        if (persons.length === 0) {
+            grid.innerHTML = '<div class="col-12 text-center text-muted"><p>No authorized persons yet. <a href="/enroll">Enroll the first person</a></p></div>';
+            return;
+        }
+        
+        persons.forEach(person => {
+            const col = document.createElement('div');
+            col.className = 'col-md-3 mb-4';
+            const enrolledDate = person.enrolled_date ? new Date(person.enrolled_date).toLocaleDateString() : 'N/A';
+            
+            // Handle missing image_id
+            const imageUrl = person.image_id ? `/api/image/${person.image_id}` : 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="250" viewBox="0 0 200 250"%3E%3Crect fill="%23ddd" width="200" height="250"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999" font-size="20"%3ENo Image%3C/text%3E%3C/svg%3E';
+            
+            col.innerHTML = `
+                <div class="card h-100 shadow-sm" style="cursor: pointer;" onclick="showDetails('${person._id}')">
+                    <img src="${imageUrl}" class="card-img-top" style="height: 250px; object-fit: cover;" 
+                         onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'200\\' height=\\'250\\' viewBox=\\'0 0 200 250\\'%3E%3Crect fill=\\'%23ddd\\' width=\\'200\\' height=\\'250\\'/%3E%3Ctext x=\\'50%25\\' y=\\'50%25\\' text-anchor=\\'middle\\' dy=\\'.3em\\' fill=\\'%23999\\' font-size=\\'20\\'%3ENo Image%3C/text%3E%3C/svg%3E'">
+                    <div class="card-body">
+                        <h5 class="card-title text-center">${person.name.replace(/_/g, ' ')}</h5>
+                        <p class="card-text">
+                            <small class="text-muted">
+                                <i class="fas fa-briefcase"></i> ${person.role || 'No role'}<br>
+                                <i class="fas fa-calendar"></i> ${enrolledDate}
+                            </small>
+                        </p>
+                    </div>
+                    <div class="card-footer bg-success text-white text-center">
+                        <i class="fas fa-eye"></i> View Details
+                    </div>
+                </div>
+            `;
+            grid.appendChild(col);
+        });
+    }
+    
+    function showDetails(personId) {
+        const person = allPersons.find(p => p._id === personId);
+        if (!person) return;
+        
+        // Populate modal
+        const imageUrl = person.image_id ? `/api/image/${person.image_id}` : 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="300" viewBox="0 0 200 300"%3E%3Crect fill="%23ddd" width="200" height="300"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999" font-size="20"%3ENo Image%3C/text%3E%3C/svg%3E';
+        document.getElementById('detail-image').src = imageUrl;
+        document.getElementById('detail-image').onerror = function() {
+            this.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="300" viewBox="0 0 200 300"%3E%3Crect fill="%23ddd" width="200" height="300"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999" font-size="20"%3ENo Image%3C/text%3E%3C/svg%3E';
+        };
+        
+        document.getElementById('detail-name').textContent = person.name.replace(/_/g, ' ');
+        document.getElementById('detail-role').textContent = person.role || 'Not specified';
+        document.getElementById('detail-notes').textContent = person.notes || 'No notes';
+        document.getElementById('detail-date').textContent = person.enrolled_date ? 
+            new Date(person.enrolled_date).toLocaleString() : 'N/A';
+        document.getElementById('detail-embedding').textContent = person.embedding ? 
+            person.embedding.length + ' dimensions' : 'N/A';
+        
+        // Get detection count
+        fetch(`/api/logs?name=${encodeURIComponent(person.name)}&status=Authorized`)
+            .then(response => response.json())
+            .then(logs => {
+                document.getElementById('detail-detections').textContent = logs.length + ' times';
+            })
+            .catch(() => {
+                document.getElementById('detail-detections').textContent = 'N/A';
+            });
+        
+        new bootstrap.Modal(document.getElementById('detailsModal')).show();
+    }
+    
+    // Search functionality
+    document.getElementById('searchInput').addEventListener('input', function(e) {
+        const searchTerm = e.target.value.toLowerCase();
+        
+        if (searchTerm === '') {
+            displayPersons(allPersons);
+            return;
+        }
+        
+        const filtered = allPersons.filter(person => {
+            return person.name.toLowerCase().includes(searchTerm) ||
+                   (person.role && person.role.toLowerCase().includes(searchTerm)) ||
+                   (person.notes && person.notes.toLowerCase().includes(searchTerm));
+        });
+        
+        displayPersons(filtered);
+    });
+    
+    // Real-time updates
+    socket.on('face_enrolled', (data) => {
+        showNotification(`New person enrolled: ${data.name}`, 'success');
+        loadAuthorizedPersons();
+    });
+    
+    // Initial load
+    loadAuthorizedPersons();
+    
+    // Refresh every 30 seconds
+    setInterval(loadAuthorizedPersons, 30000);
+</script>
+{% endblock %}

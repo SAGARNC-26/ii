@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Smart Vault CCTV</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .login-container {
+            background: white;
+            border-radius: 15px;
+            padding: 40px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            max-width: 400px;
+            width: 100%;
+        }
+        
+        .login-logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .login-logo i {
+            font-size: 4em;
+            color: #667eea;
+        }
+        
+        .login-logo h2 {
+            margin-top: 15px;
+            color: #2c3e50;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            padding: 12px;
+        }
+        
+        .btn-primary:hover {
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-logo">
+            <i class="fas fa-shield-alt"></i>
+            <h2>Smart Vault CCTV</h2>
+            <p class="text-muted">Secure Access Portal</p>
+        </div>
+        
+        {% if error %}
+        <div class="alert {% if blocked %}alert-danger{% else %}alert-warning{% endif %}" role="alert">
+            {% if blocked %}
+            <i class="fas fa-ban"></i> <strong>ACCESS BLOCKED</strong><br>
+            {{ error }}
+            <div class="mt-2 small">
+                <i class="fas fa-info-circle"></i> Your IP has been temporarily blocked due to multiple failed login attempts.
+            </div>
+            {% else %}
+            <i class="fas fa-exclamation-circle"></i> {{ error }}
+            {% if attempts_left is defined and attempts_left <= 3 %}
+            <div class="mt-2 small text-danger">
+                <i class="fas fa-exclamation-triangle"></i> <strong>Warning:</strong> Only {{ attempts_left }} attempt(s) remaining before your IP is blocked for 5 minutes.
+            </div>
+            {% endif %}
+            {% endif %}
+        </div>
+        {% endif %}
+        
+        <form method="POST">
+            <div class="mb-3">
+                <label class="form-label">Username</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-user"></i></span>
+                    <input type="text" class="form-control" name="username" required autofocus>
+                </div>
+            </div>
+            
+            <div class="mb-3">
+                <label class="form-label">Password</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-lock"></i></span>
+                    <input type="password" class="form-control" name="password" required>
+                </div>
+            </div>
+            
+            <button type="submit" class="btn btn-primary w-100">
+                <i class="fas fa-sign-in-alt"></i> Login
+            </button>
+        </form>
+        
+        <div class="text-center mt-3">
+            <small class="text-muted">Smart Vault CCTV System v1.0</small>
+        </div>
+    </div>
+</body>
+</html>

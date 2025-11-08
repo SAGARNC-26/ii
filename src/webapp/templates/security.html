@@ -1,0 +1,193 @@
+{% extends "base.html" %} {% block title %}Security Logs - Smart Vault CCTV{%
+endblock %} {% block page_title %}Security Logs & IDS Alerts{% endblock %} {%
+block content %}
+<div class="card">
+  <div class="card-body">
+    <h5 class="text-danger">
+      <i class="fas fa-shield-alt"></i>
+      Brute Force Protection
+    </h5>
+    <p class="text-muted">Currently blocked IP addresses</p>
+    <div id="blocked-ips-container" class="mt-3">
+      <div class="alert alert-success">
+        <i class="fas fa-check-circle"></i>
+        No IPs currently blocked. System monitoring active.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!--<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0"><i class="fas fa-exclamation-triangle"></i> IDS Alerts</h5>
+            </div>
+            <div class="card-body">
+                <h5 class="text-danger">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    IDS Alerts (Suricata)
+                </h5>
+                <p class="text-muted">Real-time intrusion detection alerts</p>
+                <div id="alerts-container" class="mt-3">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i> 
+                        Waiting for IDS alerts...
+                        <p class="mb-0 mt-2 small">Alerts from Suricata will appear here in real-time</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>-->
+
+<div class="card mt-4">
+  <div class="card-header">
+    <h5 class="mb-0">
+      <i class="fas fa-ban"></i> Unauthorized Access Attempts
+    </h5>
+  </div>
+  <div class="card-body">
+    <table class="table table-hover">
+      <thead>
+        <tr>
+          <th>Image</th>
+          <th>Confidence</th>
+          <th>Camera</th>
+          <th>Timestamp</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="unauthorized-table">
+        <tr>
+          <td colspan="5" class="text-center">
+            <div class="spinner-border" role="status"></div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %} {% block extra_js %}
+<script>
+  function loadBlockedIPs() {
+    fetch("/api/blocked_ips")
+      .then((response) => response.json())
+      .then((data) => {
+        const container = document.getElementById("blocked-ips-container");
+
+        if (data.count === 0) {
+          container.innerHTML = `
+                        <div class="alert alert-success">
+                            <i class="fas fa-check-circle"></i> 
+                            No IPs currently blocked. System monitoring active.
+                        </div>
+                    `;
+          return;
+        }
+
+        let html = `
+                    <div class="alert alert-warning">
+                        <i class="fas fa-shield-alt"></i> 
+                        <strong>${data.count} IP address(es) currently blocked</strong>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>IP Address</th>
+                                    <th>Failed Attempts</th>
+                                    <th>Blocked Until</th>
+                                    <th>Time Remaining</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+
+        data.blocked_ips.forEach((ip) => {
+          const mins = Math.floor(ip.remaining_seconds / 60);
+          const secs = ip.remaining_seconds % 60;
+          html += `
+                        <tr>
+                            <td><code>${ip.ip}</code></td>
+                            <td><span class="badge bg-danger">${ip.attempts}</span></td>
+                            <td>${ip.blocked_until}</td>
+                            <td><strong>${mins}m ${secs}s</strong></td>
+                        </tr>
+                    `;
+        });
+
+        html += `
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+
+        container.innerHTML = html;
+      })
+      .catch((error) => console.error("Error loading blocked IPs:", error));
+  }
+
+  function loadUnauthorized() {
+    fetch("/api/logs?limit=50&status=Unauthorized")
+      .then((response) => response.json())
+      .then((data) => {
+        const tbody = document.getElementById("unauthorized-table");
+        tbody.innerHTML = "";
+
+        if (data.length === 0) {
+          tbody.innerHTML =
+            '<tr><td colspan="5" class="text-center text-muted">No unauthorized attempts</td></tr>';
+          return;
+        }
+
+        data.forEach((log) => {
+          const row = document.createElement("tr");
+          const timestamp = new Date(log.timestamp).toLocaleString();
+
+          row.innerHTML = `
+                        <td><img src="/api/image/${
+                          log.image_id
+                        }" class="face-thumbnail"></td>
+                        <td>${(log.confidence * 100).toFixed(1)}%</td>
+                        <td>${log.camera_id}</td>
+                        <td>${timestamp}</td>
+                        <td>
+                            ${
+                              log.review_flag
+                                ? '<span class="badge bg-warning">Pending Review</span>'
+                                : ""
+                            }
+                        </td>
+                    `;
+          tbody.appendChild(row);
+        });
+      })
+      .catch((error) => console.error("Error:", error));
+  }
+
+  // Listen for security alerts
+  socket.on("security_alert", (data) => {
+    const container = document.getElementById("alerts-container");
+    const alert = document.createElement("div");
+    alert.className = "alert alert-danger alert-dismissible fade show";
+    alert.innerHTML = `
+            <h6><i class="fas fa-exclamation-triangle"></i> ${
+              data.alert_type || "Security Alert"
+            }</h6>
+            <p class="mb-0">${data.message || JSON.stringify(data)}</p>
+            <small class="text-muted">${new Date().toLocaleString()}</small>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+    container.prepend(alert);
+  });
+
+  // Initial load
+  loadBlockedIPs();
+  loadUnauthorized();
+
+  // Periodic refresh
+  setInterval(loadBlockedIPs, 10000); // Refresh every 10 seconds
+  setInterval(loadUnauthorized, 15000);
+</script>
+{% endblock %}
