@@ -7,7 +7,19 @@ import logging
 import cv2
 import numpy as np
 from typing import List, Tuple, Optional
-from deepface import DeepFace
+import tensorflow as tf
+try:
+    _ = tf.__version__
+except AttributeError:
+    try:
+        import importlib.metadata as importlib_metadata
+        tf.__version__ = importlib_metadata.version('tensorflow')
+    except Exception:
+        tf.__version__ = '2.15.0'
+try:
+    from deepface import DeepFace
+except Exception:
+    DeepFace = None
 
 from src.config import (
     RECOGNITION_MODEL, DETECTION_BACKEND, FACE_SIZE, 
@@ -31,13 +43,15 @@ class FaceUtils:
         self.model_name = RECOGNITION_MODEL
         self.detector_backend = DETECTION_BACKEND
         self.target_size = FACE_SIZE
+        self._haar = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
         
         logger.info(f"Initializing Face Recognition: {self.model_name} with {self.detector_backend}")
         
         # Pre-load model for faster inference
         try:
-            self._warmup_model()
-            logger.info("✓ Face recognition model loaded")
+            if DeepFace is not None:
+                self._warmup_model()
+                logger.info("✓ Face recognition model loaded")
         except Exception as e:
             logger.warning(f"Model warmup failed: {e}")
     
@@ -45,12 +59,13 @@ class FaceUtils:
         """Pre-load the model with a dummy image"""
         dummy = np.zeros((112, 112, 3), dtype=np.uint8)
         try:
-            DeepFace.represent(
-                img_path=dummy,
-                model_name=self.model_name,
-                detector_backend='skip',
-                enforce_detection=False
-            )
+            if DeepFace is not None:
+                DeepFace.represent(
+                    img_path=dummy,
+                    model_name=self.model_name,
+                    detector_backend='skip',
+                    enforce_detection=False
+                )
         except:
             pass
     
@@ -65,32 +80,30 @@ class FaceUtils:
             List of bounding boxes as (x, y, w, h) tuples
         """
         try:
-            # Use DeepFace's detector
-            face_objs = DeepFace.extract_faces(
-                img_path=frame,
-                detector_backend=self.detector_backend,
-                enforce_detection=False,
-                align=False
-            )
-            
-            bboxes = []
-            for face_obj in face_objs:
-                facial_area = face_obj.get('facial_area', {})
-                if facial_area:
-                    x = facial_area.get('x', 0)
-                    y = facial_area.get('y', 0)
-                    w = facial_area.get('w', 0)
-                    h = facial_area.get('h', 0)
-                    
-                    # Filter by minimum size
-                    if w >= MIN_FACE_SIZE and h >= MIN_FACE_SIZE:
-                        # Check confidence if available
-                        confidence = face_obj.get('confidence', 1.0)
-                        if confidence >= DETECTION_CONFIDENCE:
-                            bboxes.append((x, y, w, h))
-            
-            return bboxes
-            
+            if DeepFace is not None:
+                face_objs = DeepFace.extract_faces(
+                    img_path=frame,
+                    detector_backend=self.detector_backend,
+                    enforce_detection=False,
+                    align=False
+                )
+                bboxes = []
+                for face_obj in face_objs:
+                    facial_area = face_obj.get('facial_area', {})
+                    if facial_area:
+                        x = facial_area.get('x', 0)
+                        y = facial_area.get('y', 0)
+                        w = facial_area.get('w', 0)
+                        h = facial_area.get('h', 0)
+                        if w >= MIN_FACE_SIZE and h >= MIN_FACE_SIZE:
+                            confidence = face_obj.get('confidence', 1.0)
+                            if confidence >= DETECTION_CONFIDENCE:
+                                bboxes.append((x, y, w, h))
+                return bboxes
+            else:
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                detections = self._haar.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(MIN_FACE_SIZE, MIN_FACE_SIZE))
+                return [(int(x), int(y), int(w), int(h)) for (x, y, w, h) in detections]
         except Exception as e:
             logger.debug(f"Detection error: {e}")
             return []
@@ -177,27 +190,25 @@ class FaceUtils:
             Normalized embedding vector (numpy array) or None if failed
         """
         try:
-            model_name = model or self.model_name
-            
-            # Get embedding using DeepFace
-            embedding_objs = DeepFace.represent(
-                img_path=face_img,
-                model_name=model_name,
-                detector_backend='skip',  # Face already detected and cropped
-                enforce_detection=False
-            )
-            
-            if not embedding_objs:
-                return None
-            
-            # Extract embedding vector
-            embedding = np.array(embedding_objs[0]['embedding'])
-            
-            # Normalize to unit vector
-            embedding = self._normalize_embedding(embedding)
-            
-            return embedding
-            
+            if DeepFace is not None:
+                model_name = model or self.model_name
+                embedding_objs = DeepFace.represent(
+                    img_path=face_img,
+                    model_name=model_name,
+                    detector_backend='skip',
+                    enforce_detection=False
+                )
+                if not embedding_objs:
+                    return None
+                embedding = np.array(embedding_objs[0]['embedding'])
+                embedding = self._normalize_embedding(embedding)
+                return embedding
+            else:
+                gray = cv2.cvtColor(face_img, cv2.COLOR_BGR2GRAY)
+                resized = cv2.resize(gray, (32, 16)).astype('float32') / 255.0
+                embedding = resized.flatten()
+                embedding = self._normalize_embedding(embedding)
+                return embedding
         except Exception as e:
             logger.debug(f"Embedding extraction error: {e}")
             return None

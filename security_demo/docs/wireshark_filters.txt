@@ -1,0 +1,17 @@
+# Useful Wireshark/Tshark Display Filters
+
+# RTSP control methods (DESCRIBE/SETUP/PLAY)
+rtsp
+rtsp.method
+
+# Narrow to RTSP port
+rtsp && tcp.port == 8554
+
+# TLS (RTSPS) capture by port
+tcp.port == 8555
+
+# SRT is typically UDP on a chosen port
+udp.port == 9000
+
+# Show only the initial RTSP handshake (rough heuristic)
+rtsp.method == "DESCRIBE" || rtsp.method == "SETUP" || rtsp.method == "PLAY"
